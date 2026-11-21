@@ -1,0 +1,11 @@
+# Python 环境和缓存
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# 本地密钥配置
+.env
+
+# 生成文件（如果需要保存到 Git，可以删除这一行）
+outputs/
