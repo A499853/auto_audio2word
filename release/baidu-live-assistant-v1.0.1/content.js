@@ -20,9 +20,9 @@
   shadow.append(stylesheet);
   const wrapper = document.createElement('div');
   wrapper.innerHTML = `
-    <button class="launcher" id="launcher" type="button" aria-label="展开商品讲解助手" hidden><span class="launcher-icon">讲</span><span>商品讲解助手</span><span id="mini-status" class="mini-status">未运行</span></button>
+    <button class="launcher" id="launcher" type="button" aria-label="展开商品讲解助手（可拖动）" title="点击展开，按住拖动" hidden><span class="launcher-icon">讲</span><span>商品讲解助手</span><span id="mini-status" class="mini-status">未运行</span></button>
     <section class="panel" aria-label="百度直播商品讲解助手">
-      <header class="header"><div class="brand-icon" aria-hidden="true">讲</div><div class="brand"><strong>商品讲解助手</strong><span>百度直播 · 按计划自动弹窗</span></div><button class="icon-button" type="button" data-action="collapse" title="折叠面板" aria-label="折叠面板">−</button></header>
+      <header class="header" title="按住标题栏拖动面板"><div class="brand-icon" aria-hidden="true">讲</div><div class="brand"><strong>商品讲解助手</strong><span>百度直播 · 按住标题栏可拖动</span></div><button class="icon-button" type="button" data-action="collapse" title="折叠面板" aria-label="折叠面板">−</button></header>
       <nav class="tabs" role="tablist" aria-label="助手功能"><button id="tab-plan" type="button" role="tab" aria-selected="true" aria-controls="view-plan" data-tab="plan">商品弹窗</button><button id="tab-logs" type="button" role="tab" aria-selected="false" aria-controls="view-logs" data-tab="logs" tabindex="-1">运行记录 <span id="log-count" class="tab-count">0</span></button><button id="tab-settings" type="button" role="tab" aria-selected="false" aria-controls="view-settings" data-tab="settings" tabindex="-1">设置</button></nav>
       <div class="panel-body">
         <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
@@ -50,7 +50,10 @@
   let adapter;
   let runner;
   let state = { status: 'idle', products: [], total: 0, complete: false, warnings: [], successes: 0, failures: 0, index: 0, cycle: 1 };
-  let appearance = { dock: 'right', collapsed: false };
+  let appearance = { dock: 'right', collapsed: false, position: null };
+  let drag = null;
+  let suppressDragClick = false;
+  let positionFrame = null;
   let logs = [];
   let productPage = 0;
   let productSignature = '';
@@ -197,12 +200,98 @@
     return settings;
   }
 
+  function saveAppearance() {
+    chrome.storage.local.set({ baiduLiveAppearance: { ...appearance, position: appearance.position ? { ...appearance.position } : null } }).catch(() => {});
+  }
+
+  function placePanel(left, top) {
+    const rect = host.getBoundingClientRect();
+    const margin = 8;
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const position = {
+      left: Math.round(Math.max(margin, Math.min(left, Math.max(margin, viewportWidth - rect.width - margin)))),
+      top: Math.round(Math.max(margin, Math.min(top, Math.max(margin, viewportHeight - rect.height - margin))))
+    };
+    appearance.position = position;
+    host.setAttribute('data-floating', '');
+    host.style.setProperty('--bla-left', `${position.left}px`);
+    host.style.setProperty('--bla-top', `${position.top}px`);
+  }
+
+  function keepPanelInView() {
+    if (!appearance.position) return;
+    placePanel(appearance.position.left, appearance.position.top);
+  }
+
+  function queuePositionCheck() {
+    if (positionFrame !== null) return;
+    positionFrame = requestAnimationFrame(() => {
+      positionFrame = null;
+      if (!drag && appearance.position) { keepPanelInView(); saveAppearance(); }
+    });
+  }
+
   function setAppearance() {
     host.setAttribute('data-dock', appearance.dock === 'left' ? 'left' : 'right');
     $('launcher').hidden = !appearance.collapsed;
     shadow.querySelector('.panel').hidden = appearance.collapsed;
-    chrome.storage.local.set({ baiduLiveAppearance: appearance }).catch(() => {});
+    if (appearance.position) keepPanelInView();
+    else {
+      host.removeAttribute('data-floating');
+      host.style.removeProperty('--bla-left');
+      host.style.removeProperty('--bla-top');
+    }
+    saveAppearance();
   }
+
+  // Capture the pointer inside the shadow root so dragging stays reliable even
+  // when the pointer leaves the header or moves across the underlying page.
+  shadow.addEventListener('pointerdown', event => {
+    suppressDragClick = false;
+    if (event.button !== 0 || event.isPrimary === false || drag) return;
+    const handle = event.target.closest('.header, #launcher');
+    if (!handle || (handle.id !== 'launcher' && event.target.closest('button,a,input,textarea,select,[contenteditable]'))) return;
+    const rect = host.getBoundingClientRect();
+    drag = { id: event.pointerId, handle, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top, moved: false };
+    try { handle.setPointerCapture(event.pointerId); } catch { /* Pointer may have been cancelled by the browser. */ }
+  });
+  shadow.addEventListener('pointermove', event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+    drag.moved = true;
+    host.setAttribute('data-dragging', '');
+    event.preventDefault();
+    placePanel(drag.left + dx, drag.top + dy);
+  });
+  function endDrag(event) {
+    if (!drag || event.pointerId !== drag.id) return;
+    const finished = drag;
+    drag = null;
+    host.removeAttribute('data-dragging');
+    if (finished.moved) {
+      suppressDragClick = true;
+      keepPanelInView();
+      saveAppearance();
+    }
+    try {
+      if (finished.handle.hasPointerCapture(event.pointerId)) finished.handle.releasePointerCapture(event.pointerId);
+    } catch { /* A cancelled pointer may already have lost capture. */ }
+  }
+  shadow.addEventListener('pointerup', endDrag);
+  shadow.addEventListener('pointercancel', endDrag);
+  shadow.addEventListener('lostpointercapture', endDrag);
+  shadow.addEventListener('click', event => {
+    if (!suppressDragClick || event.detail === 0) return;
+    suppressDragClick = false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
+  window.addEventListener('resize', queuePositionCheck);
+  stylesheet.addEventListener('load', queuePositionCheck);
+  new ResizeObserver(queuePositionCheck).observe(host);
 
   function download(name, value, type = 'application/json') {
     const data = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
@@ -266,7 +355,7 @@
       case 'save': await applySettings(); showNotice('配置已保存，下次打开页面后可直接使用。'); break;
       case 'collapse': appearance.collapsed = true; setAppearance(); break;
       case 'expand': appearance.collapsed = false; setAppearance(); break;
-      case 'dock': appearance.dock = appearance.dock === 'right' ? 'left' : 'right'; setAppearance(); break;
+      case 'dock': appearance.dock = appearance.dock === 'right' ? 'left' : 'right'; appearance.position = null; setAppearance(); break;
       case 'previous-products': productPage--; renderProducts(); break;
       case 'next-products': productPage++; renderProducts(); break;
       case 'clear-logs': logs = []; $('log-count').textContent = '0'; renderLogs(); break;
@@ -302,7 +391,8 @@
     catch (error) {
       const message = error?.message || String(error);
       showNotice(message, true);
-      logEntry({ level: 'error', message });
+      const last = logs[logs.length - 1];
+      if (!last || last.level !== 'error' || last.message !== message || Date.now() - last.time > 1000) logEntry({ level: 'error', message });
     } finally {
       if (!concurrent) busy = false;
       if (runner) render(runner.getState());
@@ -357,7 +447,12 @@
         catch { showNotice('之前的配置已失效，已恢复默认值。请重新设置计划。', true); }
       }
       if (saved.baiduLiveAppearance) {
-        appearance = { dock: saved.baiduLiveAppearance.dock === 'left' ? 'left' : 'right', collapsed: Boolean(saved.baiduLiveAppearance.collapsed) };
+        const position = saved.baiduLiveAppearance.position;
+        appearance = {
+          dock: saved.baiduLiveAppearance.dock === 'left' ? 'left' : 'right',
+          collapsed: Boolean(saved.baiduLiveAppearance.collapsed),
+          position: position && Number.isFinite(position.left) && Number.isFinite(position.top) ? { left: position.left, top: position.top } : null
+        };
       }
     } catch (error) { showNotice(`读取配置失败：${error.message}`, true); }
     fillSettings();

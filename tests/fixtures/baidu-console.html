@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>百度直播商品卡片结构回归 · 脱敏测试页</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 24px; font: 14px/1.6 "Microsoft YaHei", sans-serif; background: #f5f7fb; color: #29364a; }
+    main { max-width: 1120px; margin: auto; padding: 24px; background: white; border-radius: 12px; }
+    .tabs { padding-bottom: 16px; border-bottom: 1px solid #e8edf4; color: #315efb; }
+    .style_product-card-container__EbuVK { height: 480px; overflow: auto; overflow-anchor: none; position: relative; }
+    .style_product-card-container__D7w13 { display: flex; height: 120px; padding: 12px; gap: 16px; border-bottom: 1px solid #edf0f6; }
+    .style_card-index-part__U8Pb_ { width: 28px; flex: none; }
+    .style_index-input__FEDkB { width: 25px; border: 0; color: #7e899c; background: transparent; }
+    .style_main-part__9P2ly { flex: 1; }
+    .style_card-detail-part___2IGX { display: flex; gap: 12px; }
+    .style_card-img-part__ss_A6 { width: 60px; height: 60px; background: #d7e6f5; flex: none; }
+    .style_card-info-part__AU_zh { flex: 1; }
+    .style_card-desc-part__DqCvm { display: flex; justify-content: space-between; }
+    .style_card-title__oF202 { display: flex; gap: 8px; }
+    .style_product-id__f14yW { color: #95a1b5; background: #f1f3f7; }
+    .style_product-desc__n3Kso { color: #8795a9; font-size: 12px; }
+    .style_card-data___nkdb { display: flex; gap: 22px; font-size: 12px; }
+    .style_card-data-desc__sRyKq { display: block; color: #8994a7; }
+    .style_card-price__IfnjE { color: #e34a64; }
+    .style_card-action-part__gWDcC { display: flex; gap: 8px; justify-content: flex-end; }
+    .style_normal-btn__J_xu7, .style_ai-button__z7SK3 { border: 1px solid #e5eaf3; border-radius: 4px; padding: 2px 9px; cursor: pointer; font-size: 12px; }
+    .style_cancel-intro__E1k94 { color: #315efb; border-color: #315efb; }
+    .style_introducing__DUBMV { color: white; background: #ff3556; font-size: 10px; margin-top: 42px; text-align: center; }
+    .note { color: #7d8ca5; font-size: 12px; margin-top: 18px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="tabs">直播商品 (<span id="count">14</span>)</div>
+    <div class="style_product-card-container__EbuVK"><div id="spacer" style="width:100%;position:relative"></div></div>
+    <p class="note">从 2026-11-21 保存的页面提取商品卡片结构；商品名称、编号身份、数据均为虚构。仅供本地测试。</p>
+  </main>
+  <script>
+    (() => {
+      const params = new URLSearchParams(location.search);
+      const state = {count: 14, active: 4, clicks: [], dangerousClicks: 0, indexes: {}, hiddenIndexes: false, mode: params.get('mode') || 'virtual'};
+      const viewport = document.querySelector('.style_product-card-container__EbuVK');
+      const spacer = document.querySelector('#spacer');
+      spacer.style.height = `${state.count * 120}px`;
+      const title = number => `测试商品 ${number} 舒适地垫`;
+      function card(number) {
+        const active = state.active === number;
+        return `<div draggable="true" style="position:absolute;top:0;left:0;width:100%;height:120px;transform:translateY(${(number - 1) * 120}px) translateZ(0);will-change:transform">
+          <div class="style_product-card-container__D7w13 " data-key="id-test-${number}">
+            <div class="style_card-index-part__U8Pb_"><img class="style_card-drag-img__O7qvI" alt=""><div class="style_card-index-option__zXlRF"><div class="style_card-idx__HlbKq"><input class="style_index-input__FEDkB" value="${number}"></div><img class="style_top-card-img__GmZgA" alt=""></div></div>
+            <div class="style_main-part__9P2ly"><div class="style_card-info__OQXYR"><div class="style_card-detail-part___2IGX">
+              <div class="style_card-img-part__ss_A6"><div class="ant-image css-mncuj7" style="width:60px"><img class="ant-image-img css-mncuj7" alt=""></div><div class="style_check-btn__86GKi"><div class="style_checked__yPvp7"></div></div>${active ? '<div class="style_introducing__DUBMV"><span>讲解中</span></div>' : ''}</div>
+              <div class="style_card-info-part__AU_zh"><div class="style_card-desc-part__DqCvm"><div class="style_card-desc__SfN8E"><div class="style_card-title__oF202"><div class="style_product-title__YtiHh">测试商品 <span>${number}</span> 舒适地垫</div><div class="style_product-id__f14yW">ID</div></div><div class="style_product-desc__n3Kso"><span class="style_ellipsis__hCEd_ style_line-1__NgWYt"><span>测试店铺<span style="display:inline-block;width:2px"></span></span><span>测试分类</span></span></div></div>
+                <div class="style_card-data___nkdb"><div class="style_card-data-block__wpy6r"><span>0/9999</span><div class="style_card-data-desc__sRyKq"><span>售出/库存</span></div></div><div class="style_card-data-block__wpy6r"><span>0</span><span class="style_card-data-desc__sRyKq">成交金额</span></div><div class="style_card-data-block__wpy6r"><span>0.00%</span><span class="style_card-data-desc__sRyKq">曝光点击</span></div></div>
+              </div><div class="style_card-price__IfnjE"><div class="style_price-wrapper__TAVQp"><div class="style_high-light-price__coCMX"></div><div class="style_hight-price__knfXY">￥9.99</div></div></div></div>
+            </div></div><div class="style_card-action-container__ovAjR"><div class="style_card-action-part__gWDcC">
+              <div class="style_actionBtn__GnChW"><div class="style_ai-button__z7SK3"><span>智能回复</span></div></div><div class="style_actionBtn__GnChW"><div class="style_ai-button__z7SK3"><span>脚本</span></div></div>
+              <div class="style_actionBtn__GnChW"><div class="style_normal-btn__J_xu7 ${active ? 'style_cancel-intro__E1k94' : ''}">${active ? '取消讲解' : '讲解商品'}</div></div>
+              <div class="style_actionBtn__GnChW"><div class="style_normal-btn__J_xu7 null">预热</div></div><div class="style_actionBtn__GnChW"><div class="style_normal-btn__J_xu7">待开售</div></div><div class="style_actionBtn__GnChW"><div class="style_normal-btn__J_xu7" aria-label="删除商品"><img class="style_icon___cjdw" alt=""></div></div>
+            </div></div></div>
+          </div></div>`;
+      }
+      function render() {
+        const first = state.mode === 'all' ? 1 : Math.max(1, Math.floor(viewport.scrollTop / 120));
+        const last = state.mode === 'all' ? state.count : Math.min(state.count, first + 5);
+        spacer.innerHTML = Array.from({length: last - first + 1}, (_, index) => card(first + index)).join('');
+        for (const input of spacer.querySelectorAll('input')) {
+          const number = Number(input.closest('[data-key]').getAttribute('data-key').replace('id-test-', ''));
+          // Properties deliberately differ from attributes in dedicated regression cases.
+          input.value = Object.hasOwn(state.indexes, number) ? state.indexes[number] : String(number);
+          input.hidden = state.hiddenIndexes;
+        }
+      }
+      viewport.addEventListener('scroll', render);
+      document.addEventListener('click', event => {
+        const button = event.target.closest('.style_normal-btn__J_xu7,.style_ai-button__z7SK3');
+        if (!button) return;
+        const text = button.textContent.trim();
+        if (!['讲解商品', '取消讲解'].includes(text)) {state.dangerousClicks++; return;}
+        const number = Number(button.closest('[data-key]').getAttribute('data-key').replace('id-test-', ''));
+        state.clicks.push(number);
+        setTimeout(() => {state.active = state.active === number ? 0 : number; render();}, 25);
+      });
+      window.baiduFixture = {state, render, title, setIndexes(value) {state.indexes = value; render();}};
+      render();
+    })();
+  </script>
+</body>
+</html>

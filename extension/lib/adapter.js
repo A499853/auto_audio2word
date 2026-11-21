@@ -3,7 +3,9 @@
   'use strict';
 
   const TEXT = { explain: '讲解商品', active: '取消讲解' };
-  const ROWS = 'tr,[role="row"],.ant-table-row,.el-table__row,.bui-table-row,[data-product-number],[data-product-id],[data-goods-id],[data-row-key],[class*="goods-item"],[class*="product-item"],[class*="commodity-item"],[class*="goods-row"],[class*="product-row"]';
+  const BAIDU_CARD = '[data-key][class*="product-card-container"]';
+  const BAIDU_INDEX = 'input[class*="index-input"],[class*="card-idx"] input';
+  const ROWS = `tr,[role="row"],.ant-table-row,.el-table__row,.bui-table-row,[data-product-number],[data-product-id],[data-goods-id],[data-row-key],${BAIDU_CARD},[class*="goods-item"],[class*="product-item"],[class*="commodity-item"],[class*="goods-row"],[class*="product-row"]`;
   const PAGERS = '.ant-pagination,.el-pagination,.bui-pagination,[role="navigation"][aria-label*="页"],[class*="pagination"]';
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
   const compact = value => normalize(value).replace(/\s/g, '');
@@ -56,7 +58,7 @@
     }
 
     function visible(element) {
-      if (!element || !element.isConnected || element.closest('[hidden],[aria-hidden="true"],[data-baidu-live-helper]')) return false;
+      if (!element || !element.isConnected || element.closest('[hidden],[aria-hidden="true"],[data-baidu-live-helper],[data-baidu-live-assistant]')) return false;
       for (let node = element; node && node.nodeType === 1; node = node.parentElement) {
         const style = win.getComputedStyle(node);
         if (style.display === 'none' || style.visibility === 'hidden') return false;
@@ -104,17 +106,28 @@
     }
 
     function readNumber(row) {
+      // The liveB console renders its reorderable index as an input. Its
+      // current value is absent from textContent and can differ from the HTML
+      // value attribute after editing. Never write to this reorder control.
+      const numberValue = element => element?.matches('input') ? element.value : element?.textContent;
       if (selectors.number) {
         const element = row.querySelector(selectors.number);
-        return element ? positive(element.textContent) : null;
+        return element ? positive(numberValue(element)) : null;
       }
       for (const attr of ['data-product-number', 'data-goods-number', 'data-number', 'data-order']) {
         const number = positive(row.getAttribute(attr));
         if (number) return number;
       }
+      const indexInputs = query(row, BAIDU_INDEX);
+      if (indexInputs.length) {
+        const values = indexInputs.filter(visible).map(element => positive(element.value));
+        // A blank/invalid index is not a cue to use sales, price or another
+        // product's number. Let scan report it as an unrecognized row.
+        return values.length && values.every(value => value && value === values[0]) ? values[0] : null;
+      }
       const candidates = query(row, '[data-product-number],[class*="sort"],[class*="number"],[class*="index"]');
       for (const element of candidates) {
-        const number = positive(element.getAttribute('data-product-number') || element.textContent);
+        const number = positive(element.getAttribute('data-product-number') || numberValue(element));
         if (number) return number;
       }
       // Never search all numeric cells: a sales/inventory count must not
@@ -143,6 +156,7 @@
     }
 
     function readId(row) {
+      if (row.matches(BAIDU_CARD) && normalize(row.getAttribute('data-key'))) return 'data-key:' + normalize(row.getAttribute('data-key'));
       for (const attr of ['data-product-id', 'data-goods-id', 'data-item-id', 'data-row-key']) {
         const value = normalize(row.getAttribute(attr));
         if (value) return attr + ':' + value;
@@ -166,6 +180,13 @@
 
     function readTitle(row) {
       if (selectors.title) return normalize(row.querySelector(selectors.title)?.textContent);
+      // card-title also contains an ID badge; the nested product-title is the
+      // stable product name and must take precedence over generic title nodes.
+      const productTitle = query(row, '[class*="product-title"],[class*="productTitle"],[data-product-title]').find(visible);
+      if (productTitle) {
+        const title = normalize(productTitle.getAttribute('data-product-title') || productTitle.textContent);
+        if (title) return title;
+      }
       const candidates = query(row, '[data-product-title],[class*="goods-name"],[class*="product-name"],[class*="goodsName"],[class*="productName"],[class*="title"],[class*="Title"],a[title],img[alt]');
       for (const element of candidates) {
         const value = normalize(element.getAttribute('data-product-title') || element.getAttribute('title') || (element.tagName === 'IMG' ? element.getAttribute('alt') : element.textContent));
@@ -424,14 +445,23 @@
 
     function inspect() {
       const rows = liveRows();
+      const foundControls = controls();
+      const unresolved = foundControls.filter(button => !rows.some(row => row.button === button));
       return {
-        url: doc.location?.href || '',
-        buttons: controls().length,
+        url: doc.location ? doc.location.origin + doc.location.pathname : '',
+        buttons: foundControls.length,
         rows: rows.length,
         total: totalHint(),
         products: rows.map(serialize),
         cached: cache.length,
-        suggestedSelectors: { row: ROWS, number: '[data-product-number],td:first-child', title: '[class*="title"],[class*="name"]', explain: 'button,a,[role="button"]' },
+        unresolved: unresolved.slice(0, 5).map(button => {
+          const ancestors = [];
+          for (let node = button, depth = 0; node && node !== doc.body && depth < 9; node = node.parentElement, depth++) {
+            ancestors.push({tag: node.tagName, classes: String(node.className || ''), hasProductKey: node.hasAttribute('data-key'), indexInputs: query(node, BAIDU_INDEX).map(input => ({classes: input.className, value: input.value})).slice(0, 5)});
+          }
+          return {text: actionText(button), ancestors};
+        }),
+        suggestedSelectors: { row: BAIDU_CARD, number: 'input[class*="index-input"]', title: '[class*="product-title"]', explain: '[class*="normal-btn"]' },
         selectors: { ...selectors },
         note: rows.length ? '已识别商品行；点击仍需等待网页状态确认' : '登录并进入直播商品列表后重新诊断，或填写自定义选择器'
       };

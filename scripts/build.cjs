@@ -33,7 +33,10 @@ const stamp = new Date();
 const dosTime = (stamp.getHours() << 11) | (stamp.getMinutes() << 5) | (stamp.getSeconds() >> 1);
 const dosDate = ((stamp.getFullYear() - 1980) << 9) | ((stamp.getMonth() + 1) << 5) | stamp.getDate();
 for (const full of walk(folder)) {
-  const name = Buffer.from(path.relative(release, full).replace(/\\/g, '/'), 'utf8');
+  // Put manifest.json at ZIP root. Extract-to-folder tools already add a
+  // versioned outer directory; another wrapper makes users select the wrong
+  // level in Chrome/Edge and receive "manifest missing".
+  const name = Buffer.from(path.relative(folder, full).replace(/\\/g, '/'), 'utf8');
   const data = fs.readFileSync(full);
   const compressed = zlib.deflateRawSync(data);
   const crc = crc32(data);
