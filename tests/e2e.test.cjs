@@ -45,42 +45,73 @@ test('72 件商品完整识别；指定序号切换并确认蓝色取消讲解�
   } finally { await page.close(); }
 });
 
-test('150 件分页商品跨页采集及重新定位，没有 100 件上限', { timeout: 45000 }, async () => {
-  const page = await createPage('?count=150&mode=paged&pageSize=20');
+test('200 件分页商品跨页完整采集及首末商品重新定位', { timeout: 45000 }, async () => {
+  const page = await createPage('?count=200&mode=paged&pageSize=20');
   try {
     const result = await page.evaluate(async () => {
       const adapter = BaiduLiveAdapter.createAdapter(document);
       const scan = await adapter.scan();
       const first = await adapter.explain(scan.products.find(p => p.number === 1));
-      const last = await adapter.explain(scan.products.find(p => p.number === 150));
+      const last = await adapter.explain(scan.products.find(p => p.number === 200));
       return { count: scan.products.length, total: scan.total, complete: scan.complete, first, last, clicks: fixture.state.clicks.map(c => c.number), dangerous: fixture.state.dangerousClicks };
     });
-    assert.equal(result.count, 150);
-    assert.equal(result.total, 150);
+    assert.equal(result.count, 200);
+    assert.equal(result.total, 200);
     assert.equal(result.complete, true);
     assert.equal(result.first.confirmed, true);
     assert.equal(result.last.confirmed, true);
-    assert.deepEqual(result.clicks, [1, 150]);
+    assert.deepEqual(result.clicks, [1, 200]);
     assert.equal(result.dangerous, 0);
   } finally { await page.close(); }
 });
 
-test('150 件虚拟滚动商品完整采集，并能定位到首件与末件', { timeout: 45000 }, async () => {
-  const page = await createPage('?count=150&mode=virtual');
+test('200 件虚拟滚动商品完整采集，并能定位到首件与末件', { timeout: 45000 }, async () => {
+  const page = await createPage('?count=200&mode=virtual');
   try {
     const result = await page.evaluate(async () => {
       const adapter = BaiduLiveAdapter.createAdapter(document, { selectors: { scrollContainer: '.virtual-list' } });
       const scan = await adapter.scan();
       await adapter.explain(scan.products.find(p => p.number === 1));
-      await adapter.explain(scan.products.find(p => p.number === 150));
+      await adapter.explain(scan.products.find(p => p.number === 200));
       return { count: scan.products.length, complete: scan.complete, clicks: fixture.state.clicks.map(c => c.number), active: fixture.state.active, dangerous: fixture.state.dangerousClicks };
     });
-    assert.equal(result.count, 150);
+    assert.equal(result.count, 200);
     assert.equal(result.complete, true);
-    assert.deepEqual(result.clicks, [1, 150]);
-    assert.equal(result.active, 150);
+    assert.deepEqual(result.clicks, [1, 200]);
+    assert.equal(result.active, 200);
     assert.equal(result.dangerous, 0);
   } finally { await page.close(); }
+});
+
+test('200 件真实 DOM 按完整计划逐一确认，并从第 200 件循环至第 1 件', { timeout: 150000 }, async () => {
+  const page = await createPage('?count=200&mode=virtual&delay=1');
+  try {
+    const result = await page.evaluate(async () => {
+      const runner = BaiduLiveCore.createRunner({
+        adapter:BaiduLiveAdapter.createAdapter(document),
+        settings:{plan:'1-200',intervalSeconds:86400,loop:true}
+      });
+      const scan = await runner.scan();
+      await runner.start();
+      // Advance the same runner through actual DOM clicks and confirmations
+      // without waiting 200 normal presentation intervals.
+      for (let index = 0; index < 200; index++) await runner.next();
+      const state = runner.getState();
+      runner.stop();
+      return {scanned:scan.products.length,complete:scan.complete,state,
+        clicks:fixture.state.clicks.map(item => item.number),
+        active:fixture.state.active,dangerous:fixture.state.dangerousClicks};
+    });
+    assert.equal(result.scanned,200);
+    assert.equal(result.complete,true);
+    assert.deepEqual(result.clicks,[...Array.from({length:200}, (_, i) => i + 1),1]);
+    assert.equal(result.state.successes,201);
+    assert.equal(result.state.failures,0);
+    assert.equal(result.state.cycle,2);
+    assert.equal(result.state.current.number,1);
+    assert.equal(result.active,1);
+    assert.equal(result.dangerous,0);
+  } finally {await page.close();}
 });
 
 test('真实 DOM 调度：循环、暂停、继续和停止均控制实际商品按钮', { timeout: 20000 }, async () => {
@@ -127,6 +158,8 @@ test('浮动面板扫描、生成计划、执行、暂停及配置保存', { tim
     await panel.locator('#scan').waitFor();
     await page.waitForFunction(() => !document.querySelector('#baidu-live-assistant-root').shadowRoot.querySelector('#scan').disabled);
     assert.equal(await panel.locator('#interval').inputValue(), '8');
+    assert.equal(await panel.locator('#range-end').inputValue(), '200');
+    assert.equal(await panel.locator('#loop').isChecked(), true);
     await panel.locator('#scan').click();
     await page.waitForFunction(() => document.querySelector('#baidu-live-assistant-root').shadowRoot.querySelector('#product-count').textContent === '12');
     assert.equal(await panel.locator('#plan').inputValue(), '1-12');

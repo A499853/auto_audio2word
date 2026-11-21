@@ -1,12 +1,12 @@
 {
   "name": "baidu-live-product-assistant",
-  "version": "1.0.1",
+  "version": "1.0.5",
   "private": true,
   "description": "Chrome / Edge 百度直播商品按计划自动讲解扩展",
   "scripts": {
-    "test": "node --test tests/core.test.cjs tests/adapter.test.cjs tests/e2e.test.cjs tests/drag.test.cjs tests/real-dom.test.cjs",
+    "test": "node --test tests/core.test.cjs tests/adapter.test.cjs tests/e2e.test.cjs tests/drag.test.cjs tests/real-dom.test.cjs tests/scroll.test.cjs tests/limits-panel.test.cjs",
     "test:unit": "node --test tests/core.test.cjs",
-    "test:browser": "node --test tests/adapter.test.cjs tests/e2e.test.cjs tests/drag.test.cjs tests/real-dom.test.cjs",
+    "test:browser": "node --test tests/adapter.test.cjs tests/e2e.test.cjs tests/drag.test.cjs tests/real-dom.test.cjs tests/scroll.test.cjs tests/limits-panel.test.cjs",
     "verify:extension": "node scripts/verify-extension.cjs",
     "check": "node scripts/check.cjs",
     "build": "node scripts/build.cjs"

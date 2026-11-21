@@ -1,21 +1,21 @@
 (function (root) {
   'use strict';
 
-  const MAX_PLAN_ITEMS = 10000;
+  const MAX_PLAN_ITEMS = 200;
   const SELECTOR_KEYS = ['row', 'number', 'title', 'explain', 'nextPage', 'scrollContainer'];
   const DEFAULT_SETTINGS = Object.freeze({
-    plan: '', intervalSeconds: 8, loop: true,
+    plan: '', intervalSeconds: 8, loop: true, followCurrent: true,
     selectors: Object.freeze(Object.fromEntries(SELECTOR_KEYS.map(key => [key, ''])))
   });
 
   function parsePlan(text) {
-    if (typeof text !== 'string' || !text.trim()) throw new Error('请输入商品序号计划，例如 1-72 或 1,3,5-8。');
+    if (typeof text !== 'string' || !text.trim()) throw new Error('请输入商品序号计划，例如 1-200 或 1,3,5-8。');
     const normalized = text.trim().replace(/[，、；;]/g, ',').replace(/[～~—–至]/g, '-');
     const tokens = normalized.split(/[\s,]+/).filter(Boolean);
     const result = [];
     for (const token of tokens) {
       const match = /^(\d+)(?:-(\d+))?$/.exec(token);
-      if (!match) throw new Error(`无法识别计划“${token}”，请使用正整数或范围（如 1-72）。`);
+      if (!match) throw new Error(`无法识别计划“${token}”，请使用正整数或范围（如 1-200）。`);
       const start = Number(match[1]);
       const end = Number(match[2] || match[1]);
       if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < 1 || start > 1000000 || end > 1000000) {
@@ -36,6 +36,7 @@
     const intervalSeconds = value.intervalSeconds === undefined ? 8 : Number(value.intervalSeconds);
     if (!Number.isFinite(intervalSeconds) || intervalSeconds < 1 || intervalSeconds > 86400) throw new Error('弹窗间隔须为 1 至 86400 秒。');
     if (value.loop !== undefined && typeof value.loop !== 'boolean') throw new Error('循环设置须为 true 或 false。');
+    if (value.followCurrent !== undefined && typeof value.followCurrent !== 'boolean') throw new Error('跟随设置须为 true 或 false。');
     if (value.selectors !== undefined && (!value.selectors || typeof value.selectors !== 'object' || Array.isArray(value.selectors))) throw new Error('选择器设置须为对象。');
     const selectors = {};
     for (const key of SELECTOR_KEYS) {
@@ -43,7 +44,7 @@
       if (typeof selector !== 'string' || selector.length > 1000) throw new Error(`选择器 ${key} 须为不超过 1000 字符的文本。`);
       selectors[key] = selector.trim();
     }
-    return {plan: plan.trim(), intervalSeconds, loop: value.loop ?? true, selectors};
+    return {plan: plan.trim(), intervalSeconds, loop: value.loop ?? true, followCurrent: value.followCurrent ?? true, selectors};
   }
 
   function createRunner({adapter, settings = DEFAULT_SETTINGS, onChange = () => {}, onLog = () => {}, clock = {}}) {
@@ -174,7 +175,7 @@
         if (state.status === 'stopped') return;
       }
       if (!state.products.length) return;
-      const plan = config.plan ? parsePlan(config.plan) : state.products.map(item => item.number);
+      const plan = parsePlan(config.plan || state.products.slice(0, MAX_PLAN_ITEMS).map(item => item.number).join(','));
       const found = new Set(state.products.map(item => item.number));
       const missing = [...new Set(plan.filter(number => !found.has(number)))];
       if (missing.length) throw new Error(`计划中的商品序号未找到：${missing.slice(0, 20).join('、')}${missing.length > 20 ? '…' : ''}。请重新抓取或修改计划。`);

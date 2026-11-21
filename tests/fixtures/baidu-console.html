@@ -40,8 +40,30 @@
   <script>
     (() => {
       const params = new URLSearchParams(location.search);
-      const state = {count: 14, active: 4, clicks: [], dangerousClicks: 0, indexes: {}, hiddenIndexes: false, mode: params.get('mode') || 'virtual'};
+      const state = {count: Number(params.get('count') || 14), active: 4, clicks: [], dangerousClicks: 0, indexes: {}, hiddenIndexes: false, mode: params.get('mode') || 'virtual'};
+      document.querySelector('#count').textContent = String(state.count);
       const viewport = document.querySelector('.style_product-card-container__EbuVK');
+      // Reproduce the live workbench's independent page, workbench and list
+      // scrollbars. Part of the list is clipped by the workbench viewport.
+      if (params.get('layout') === 'nested') {
+        // The saved Baidu stylesheet uses smooth scrolling on this list.
+        viewport.style.scrollBehavior = 'smooth';
+        const gap = height => {
+          const element = document.createElement('div');
+          element.style.height = `${height}px`;
+          return element;
+        };
+        const main = document.querySelector('main');
+        const workbench = document.createElement('section');
+        workbench.id = 'workbench';
+        workbench.style.cssText = 'height:560px;overflow:auto;overflow-anchor:none;border:3px solid #aab8cc';
+        main.replaceWith(workbench);
+        workbench.append(gap(280), main, gap(650));
+        document.body.prepend(gap(480));
+        document.body.append(gap(800));
+        workbench.scrollTop = 160;
+        window.scrollTo(0, 240);
+      }
       const spacer = document.querySelector('#spacer');
       spacer.style.height = `${state.count * 120}px`;
       const title = number => `测试商品 ${number} 舒适地垫`;

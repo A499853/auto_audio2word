@@ -5,6 +5,7 @@
   const TEXT = { explain: '讲解商品', active: '取消讲解' };
   const BAIDU_CARD = '[data-key][class*="product-card-container"]';
   const BAIDU_INDEX = 'input[class*="index-input"],[class*="card-idx"] input';
+  const PRODUCT_LISTS = '.ant-table-body,.ant-table-content,.el-table__body-wrapper,.el-scrollbar__wrap,.bui-table-body,[class*="virtual-list"],[role="grid"],[role="list"],[data-product-list]';
   const ROWS = `tr,[role="row"],.ant-table-row,.el-table__row,.bui-table-row,[data-product-number],[data-product-id],[data-goods-id],[data-row-key],${BAIDU_CARD},[class*="goods-item"],[class*="product-item"],[class*="commodity-item"],[class*="goods-row"],[class*="product-row"]`;
   const PAGERS = '.ant-pagination,.el-pagination,.bui-pagination,[role="navigation"][aria-label*="页"],[class*="pagination"]';
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
@@ -23,6 +24,7 @@
     // races a delayed response from the previous product.
     if (!documentOperations.has(doc)) documentOperations.set(doc, { pendingClick: null });
     const operations = documentOperations.get(doc);
+    const shouldFollow = () => options.shouldFollow ? options.shouldFollow() !== false : true;
 
     function check(signal) {
       if (signal && signal.aborted) {
@@ -233,13 +235,52 @@
       if (selectors.scrollContainer) {
         const container = query(doc, selectors.scrollContainer)[0];
         if (!container) throw new Error('未找到指定的商品滚动容器');
+        if (container === doc.body || container === doc.documentElement || container === doc.scrollingElement || !container.contains(rows[0]?.row)) {
+          throw new Error('商品滚动容器必须是包含商品的列表内部元素，不能选择整个页面');
+        }
         return container;
       }
-      for (let node = rows[0]?.row.parentElement; node && node !== doc.body; node = node.parentElement) {
-        const style = win.getComputedStyle(node);
-        if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 4) return node;
+      const scrollable = node => node && node.clientHeight > 0 && /(auto|scroll)/.test(win.getComputedStyle(node).overflowY);
+      // Baidu reuses product-card-container for each card and its list.
+      // Stop at that list boundary even when it has no scrollbar; the next
+      // scrolling ancestor may be the whole workbench, with video and chat.
+      if (rows[0]?.row.matches(BAIDU_CARD)) {
+        const list = rows[0].row.parentElement?.closest('[class*="product-card-container"]');
+        return scrollable(list) ? list : null;
       }
-      return doc.scrollingElement || doc.documentElement;
+      for (let node = rows[0]?.row.parentElement; node && node !== doc.body; node = node.parentElement) {
+        if (node.matches(PRODUCT_LISTS) && scrollable(node)) return node;
+      }
+      // Static rows can be read and clicked without scrolling. An unknown
+      // virtual list needs an explicit selector, never a page-wide fallback.
+      return null;
+    }
+
+    function scrollList(container, top) {
+      if (!container) return false;
+      const before = container.scrollTop;
+      container.scrollTo({ top, behavior: 'instant' });
+      if (container.scrollTop === before) return false;
+      container.dispatchEvent(new win.Event('scroll'));
+      return true;
+    }
+
+    async function followRow(row, signal) {
+      const container = scrollBox([row]);
+      if (!container) return;
+      const bounds = container.getBoundingClientRect();
+      const top = bounds.top + container.clientTop;
+      const card = row.row.getBoundingClientRect();
+      // Always move the product to the top of its own list, even when it is
+      // already fully visible. The browser clamps the last products at the
+      // maximum scroll position without moving any outer ancestor.
+      const delta = card.top - top;
+      check(signal);
+      if (delta && scrollList(container, container.scrollTop + delta)) {
+        // Virtual lists can replace nodes in their scroll handler. Wait for
+        // that render, then explain() will resolve the product identity again.
+        await sleep(180, signal);
+      }
     }
 
     function disabled(element) {
@@ -303,8 +344,7 @@
         throw new Error('未找到直播商品列表，请先登录百度直播并打开“直播商品”页');
       }
       let container = scrollBox(rows);
-      container.scrollTop = 0;
-      container.dispatchEvent(new win.Event('scroll', { bubbles: true }));
+      scrollList(container, 0);
       await sleep(180, signal);
       let stationary = 0;
       let pageCount = 1;
@@ -325,15 +365,14 @@
         const advertisedTotal = totalHint();
         if (advertisedTotal > 0 && rows.length === advertisedTotal) return { complete: true, pageCount };
         const currentSignature = signature(rows);
-        const before = container.scrollTop;
+        const before = container?.scrollTop || 0;
         // Ordinary paginated HTML tables already expose their full current
         // page in the DOM. Scrolling every row there adds needless delays;
         // virtualized tables and lists still require the complete scroll path.
         const staticTablePage = rows.length > 0 && rows.every(item => item.row.tagName === 'TR' && !item.row.closest('[class*="virtual"],[class*="Virtual"]')) && query(doc, PAGERS).some(visible);
-        const atBottom = staticTablePage || before + container.clientHeight >= container.scrollHeight - 4;
+        const atBottom = !container || staticTablePage || before + container.clientHeight >= container.scrollHeight - 4;
         if (!atBottom) {
-          container.scrollTop = Math.min(before + Math.max(180, container.clientHeight * 0.72), container.scrollHeight);
-          container.dispatchEvent(new win.Event('scroll', { bubbles: true }));
+          scrollList(container, Math.min(before + Math.max(180, container.clientHeight * 0.72), container.scrollHeight));
           await sleep(180, signal);
           if (container.scrollTop !== before || currentSignature !== lastSignature) { stationary = 0; lastSignature = currentSignature; continue; }
         }
@@ -350,8 +389,7 @@
         pageCount++;
         rows = liveRows();
         container = scrollBox(rows);
-        container.scrollTop = 0;
-        container.dispatchEvent(new win.Event('scroll', { bubbles: true }));
+        scrollList(container, 0);
         stationary = 0;
         lastSignature = '';
         await sleep(180, signal);
@@ -398,14 +436,21 @@
       if (!pending) return null;
       do {
         check(signal);
+        // A background observer can finish the same dispatched request after
+        // pause/stop. Share its result before restoring a virtual list view.
+        if (pending.result) return pending.result;
+        if (operations.pendingClick !== pending) return null;
         const current = matchingRow(pending.product);
         if (current && current.active) {
+          pending.result = { ...serialize(current), alreadyActive: false, confirmed: true };
           if (operations.pendingClick === pending) operations.pendingClick = null;
-          return { ...serialize(current), alreadyActive: false, confirmed: true };
+          pending.restoreView?.();
+          return pending.result;
         }
         if (Date.now() >= pending.deadline) break;
         await sleep(Math.min(100, Math.max(1, pending.deadline - Date.now())), signal);
       } while (true);
+      pending.restoreView?.();
       if (resetExpired) {
         if (operations.pendingClick === pending) operations.pendingClick = null;
         return null;
@@ -419,28 +464,48 @@
       // Finish confirming the previous click before locating another product.
       // A pause may have aborted its waiter after the request was dispatched.
       await settlePendingClick(signal);
-      let row = matchingRow(product);
-      if (!row) {
-        const result = await traverse({ signal, stopWhen: item => sameProduct(item, product) });
-        row = result.found || null;
+      const container = scrollBox(liveRows());
+      const originalTop = container?.scrollTop;
+      let viewFinished = false;
+      const restoreView = () => {
+        if (viewFinished) return;
+        viewFinished = true;
+        if (!shouldFollow() && container?.isConnected) scrollList(container, originalTop);
+      };
+      try {
+        let row = matchingRow(product);
+        if (!row) {
+          const result = await traverse({ signal, stopWhen: item => sameProduct(item, product) });
+          row = result.found || null;
+        }
+        check(signal);
+        // Re-query after locating and scrolling; virtual rows may be reused.
+        row = matchingRow(product);
+        if (!row) throw new Error('找不到商品 ' + product.number + ' 或其身份已改变；请重新抓取商品列表');
+        if (shouldFollow()) await followRow(row, signal);
+        check(signal);
+        row = matchingRow(product);
+        if (!row) throw new Error('商品状态发生变化，请重新抓取后重试');
+        if (row.active) return { ...serialize(row), alreadyActive: true, confirmed: true };
+        if (disabled(row.button)) throw new Error('商品 ' + product.number + ' 的讲解按钮不可用');
+        if (actionText(row.button) !== TEXT.explain) throw new Error('商品状态发生变化，请重新抓取后重试');
+        check(signal);
+        const sent = { product: serialize(row), deadline: Date.now() + confirmTimeout, restoreView };
+        operations.pendingClick = sent;
+        try { row.button.click(); }
+        catch (error) { if (operations.pendingClick === sent) operations.pendingClick = null; throw error; }
+        return await settlePendingClick(signal);
+      } finally {
+        const pending = operations.pendingClick;
+        if (pending?.restoreView !== restoreView) restoreView();
+        else if (signal?.aborted && !pending.observing) {
+          // The website already received this click. Continue read-only
+          // confirmation so stopping does not leave the list at a temporary
+          // lookup position; never dispatch another product from this observer.
+          pending.observing = true;
+          void settlePendingClick().catch(() => pending.restoreView?.());
+        }
       }
-      check(signal);
-      // Re-query immediately before the click so a re-render cannot reuse an
-      // old row element for a different product.
-      row = matchingRow(product);
-      if (!row) throw new Error('找不到商品 ' + product.number + ' 或其身份已改变；请重新抓取商品列表');
-      if (row.active) return { ...serialize(row), alreadyActive: true, confirmed: true };
-      if (disabled(row.button)) throw new Error('商品 ' + product.number + ' 的讲解按钮不可用');
-      row.row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-      check(signal);
-      row = matchingRow(product);
-      if (!row || actionText(row.button) !== TEXT.explain) throw new Error('商品状态发生变化，请重新抓取后重试');
-      check(signal);
-      const sent = { product: serialize(row), deadline: Date.now() + confirmTimeout };
-      operations.pendingClick = sent;
-      try { row.button.click(); }
-      catch (error) { if (operations.pendingClick === sent) operations.pendingClick = null; throw error; }
-      return settlePendingClick(signal);
     }
 
     function inspect() {

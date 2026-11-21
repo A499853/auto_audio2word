@@ -22,16 +22,21 @@ function harness(options = {}) {
   return {runner, clicks, logs, tick, timers, products};
 }
 
-test('plans keep explicit order and repeats, parse Chinese separators and >100 goods', () => {
+test('plans keep order and repeats while allowing exactly 200 items', () => {
   assert.deepEqual(parsePlan('3，1,5-7；3'), [3,1,5,6,7,3]);
-  assert.equal(parsePlan('1-150').length, 150);
-  assert.equal(parsePlan('1-10000').length, 10000);
+  assert.deepEqual(parsePlan('1-200'), Array.from({length:200}, (_, i) => i + 1));
+  assert.deepEqual(parsePlan('201,500'), [201,500], 'The limit counts planned items, not product identity numbers');
+  assert.throws(() => parsePlan('1-201'), /200/);
+  assert.throws(() => parsePlan('1-100,101-200,1'), /200/);
+  assert.throws(() => validateSettings({plan:'1-201'}), /200/);
   for (const invalid of ['', '0', '-1', '5-2', '1.2', 'abc', '1-10001', '1e6', '1000001']) assert.throws(() => parsePlan(invalid));
 });
 test('settings reject invalid intervals and malformed imported objects', () => {
   assert.equal(validateSettings({}).intervalSeconds, 8);
   assert.equal(validateSettings({intervalSeconds: 1}).intervalSeconds, 1);
-  for (const invalid of [{intervalSeconds: 0}, {intervalSeconds: ''}, {intervalSeconds: 'x'}, {intervalSeconds: Infinity}, {loop:'false'}, {selectors: []}, {selectors: {row: 42}}, null, []]) assert.throws(() => validateSettings(invalid));
+  assert.equal(validateSettings({}).followCurrent, true);
+  assert.equal(validateSettings({followCurrent:false}).followCurrent, false);
+  for (const invalid of [{intervalSeconds: 0}, {intervalSeconds: ''}, {intervalSeconds: 'x'}, {intervalSeconds: Infinity}, {loop:'false'}, {followCurrent:'false'}, {selectors: []}, {selectors: {row: 42}}, null, []]) assert.throws(() => validateSettings(invalid));
 });
 test('8 second sequencing, pause/resume remaining countdown, loop and stop', async () => {
   const h = harness(); await h.runner.start();
@@ -54,6 +59,44 @@ test('one-shot completes, next while paused performs only one step', async () =>
 test('missing product prevents clicks and plan defaults to actual scanned numbers', async () => {
   const h = harness({plan:'151'}); await assert.rejects(h.runner.start(), /151/); assert.equal(h.clicks.length,0);
   const all = harness({plan:''}); await all.runner.start(); assert.equal(all.runner.getState().plan.length,150); all.runner.stop();
+});
+
+test('200-item loop confirms every item in order before returning to the first', async () => {
+  const h = harness({count:200,plan:'1-200'});
+  await h.runner.start();
+  for (let index = 0; index < 200; index++) await h.tick(8000);
+  assert.deepEqual(h.clicks, [...Array.from({length:200}, (_, i) => i + 1), 1]);
+  const state = h.runner.getState();
+  assert.equal(state.successes,201);
+  assert.equal(state.failures,0);
+  assert.equal(state.cycle,2);
+  assert.equal(state.current.number,1);
+  h.runner.stop();
+  await h.tick(8000);
+  assert.equal(h.clicks.length,201);
+});
+
+test('automatic plan takes at most 200 items without truncating the scanned catalog', async () => {
+  for (const count of [200,201]) {
+    const h = harness({count,plan:'',loop:false});
+    await h.runner.start();
+    for (let index = 1; index < 200; index++) await h.runner.next();
+    const state = h.runner.getState();
+    assert.equal(state.products.length,count);
+    assert.equal(state.complete,true);
+    assert.deepEqual(state.plan,Array.from({length:200}, (_, i) => i + 1));
+    assert.deepEqual(h.clicks,state.plan);
+    assert.equal(state.status,'completed');
+    assert.equal(state.current.number,200);
+    assert.equal(h.timers.size,0);
+  }
+});
+
+test('explicit 1-200 plan refuses to start when product 200 is absent', async () => {
+  const h = harness({count:199,plan:'1-200'});
+  await assert.rejects(h.runner.start(), /200/);
+  assert.deepEqual(h.clicks,[]);
+  assert.equal(h.timers.size,0);
 });
 test('confirmation is required, three consecutive failures pause automatically', async () => {
   const h = harness({explain:async () => ({confirmed:false})});

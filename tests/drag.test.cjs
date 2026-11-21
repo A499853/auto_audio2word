@@ -113,3 +113,58 @@ test('讲解运行中可拖动，停止按钮仍立即阻止后续切换', async
     assert.equal(await page.evaluate(()=>fixture.state.clicks.length),count);
   }finally{await page.close();}
 });
+
+test('紧凑主视图不超过500px，常用控制直接可见，序号生成按需展开', async () => {
+  const page=await createPage();
+  try {
+    await page.setViewportSize({width:1440,height:900});
+    const panel=panelOf(page);
+    async function checkCompact() {
+      const bounds=await panel.locator('.panel').boundingBox();
+      assert.ok(bounds.height<=500,`Compact panel height ${bounds.height} exceeds 500px`);
+      assert.ok(bounds.width<=340,`Compact panel width ${bounds.width} exceeds 340px`);
+      for (const selector of ['#plan','#interval','#loop','#follow-current','#start','#pause','#stop']) {
+        assert.equal(await panel.locator(selector).isVisible(),true,`${selector} must be directly visible`);
+        const control=await panel.locator(selector).boundingBox();
+        assert.ok(control.y>=bounds.y && control.y+control.height<=bounds.y+bounds.height,`${selector} must fit inside the panel`);
+      }
+    }
+    await checkCompact();
+    assert.equal(await panel.locator('#range-end').isVisible(),false);
+    await panel.locator('details.generator-details > summary').click();
+    assert.equal(await panel.locator('#range-end').isVisible(),true);
+    await panel.locator('#range-end').fill('6');
+    await panel.locator('[data-action="generate"]').click();
+    assert.equal(await panel.locator('#plan').inputValue(),'1-6');
+    await panel.locator('details.generator-details > summary').click();
+    await panel.locator('#scan').click();
+    await page.waitForFunction(()=>!document.querySelector('#baidu-live-assistant-root').shadowRoot.querySelector('#scan').disabled);
+    await checkCompact();
+  } finally {await page.close();}
+});
+
+test('折叠浮条显示确认商品序号，折叠中随讲解更新，暂停停止保留最近序号', {timeout:15000}, async () => {
+  const page=await createPage();
+  try {
+    const panel=panelOf(page);
+    await panel.locator('#plan').fill('1,2');
+    await panel.locator('#interval').fill('2');
+    await panel.locator('#start').click();
+    await page.waitForFunction(()=>/1\s*号/.test(document.querySelector('#baidu-live-assistant-root').shadowRoot.querySelector('#mini-status').textContent));
+    await panel.locator('[data-action="collapse"]').click();
+    assert.equal(await panel.locator('#launcher').isVisible(),true);
+    assert.match(await panel.locator('#mini-status').textContent(),/正在讲解.*1\s*号/);
+    await page.waitForFunction(()=>/2\s*号/.test(document.querySelector('#baidu-live-assistant-root').shadowRoot.querySelector('#mini-status').textContent));
+    assert.equal(await panel.locator('.panel').isVisible(),false);
+    assert.match(await panel.locator('#mini-status').textContent(),/正在讲解.*2\s*号/);
+    await panel.locator('#launcher').click();
+    await panel.locator('#pause').click();
+    await panel.locator('[data-action="collapse"]').click();
+    assert.match(await panel.locator('#mini-status').textContent(),/已暂停.*2\s*号/);
+    await panel.locator('#launcher').click();
+    await panel.locator('#stop').click();
+    await panel.locator('[data-action="collapse"]').click();
+    assert.match(await panel.locator('#mini-status').textContent(),/已停止.*2\s*号/);
+    assert.deepEqual(await page.evaluate(()=>fixture.state.clicks.map(item=>item.number)),[1,2]);
+  } finally {await page.close();}
+});

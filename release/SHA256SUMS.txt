@@ -1,2 +1,6 @@
 58c7f343ba87849df22ab3451f12b1ac871e1d1994433f4036042a7c06b9f248  baidu-live-assistant-v1.0.0.zip
 754e142ef5aa5e1c7c8db0d692340af39f5432d69f1f6d334d5a9b361597ad86  baidu-live-assistant-v1.0.1.zip
+4111fc08821841cdbdfd10460ab93d315445c498f09b0961c799bf5e65061555  baidu-live-assistant-v1.0.2.zip
+7974af9f4ff77c52c2d245245f3cc57ef902feb4ce0c8b2c6aa3d1fa988df78b  baidu-live-assistant-v1.0.3.zip
+7918b15ef1d30fa7d82d2131fb0117288a8e783656d326c0bbef31fedb2b533f  baidu-live-assistant-v1.0.4.zip
+8ae4d960bb0e90259b671370118ae1ab24eeb042c044e00f630a665d5c00ef19  baidu-live-assistant-v1.0.5.zip
