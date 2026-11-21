@@ -3,11 +3,28 @@
 venv/
 __pycache__/
 *.pyc
-
+.codex
 # 本地密钥配置
 .env
 
 # 生成文件（如果需要保存到 Git，可以删除这一行）
 outputs/
 
-/auto_audio2word/
+
+
+# git 
+# # 2. 查看当前文件状态（哪些文件被修改了）
+# $ git status
+
+# # 3. 把修改的文件添加到"暂存区"（准备提交）
+# $ git add .
+# git diff	工作区 vs 暂存区	详细的逐行差异（未暂存的改动）
+# git diff --cached --stat	暂存区 vs 最后一次提交	仅统计摘要（哪些文件改了、增删多少行），不显示具体代码
+# # 4. 提交一个版本（附带说明信息）
+# $ git commit -m "描述这次修改做了什么"
+
+# # 5. 将代码推送到远程仓库（如GitHub）
+# $ git push
+
+# # 6. 从远程仓库拉取最新代码
+# $ git pull
