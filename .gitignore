@@ -9,3 +9,5 @@ __pycache__/
 
 # 生成文件（如果需要保存到 Git，可以删除这一行）
 outputs/
+
+/auto_audio2word/
